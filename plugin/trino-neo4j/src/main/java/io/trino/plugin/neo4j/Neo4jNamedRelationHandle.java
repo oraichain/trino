@@ -16,12 +16,7 @@ package io.trino.plugin.neo4j;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.connector.SchemaTableName;
-import org.neo4j.cypherdsl.core.AliasedExpression;
-import org.neo4j.cypherdsl.core.Cypher;
-import org.neo4j.cypherdsl.core.Node;
-import org.neo4j.cypherdsl.core.Relationship;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -83,37 +78,6 @@ public class Neo4jNamedRelationHandle
     public Optional<String> getDatabaseName()
     {
         return Optional.ofNullable(getRemoteTableName().getDatabaseName());
-    }
-
-    @Override
-    public String toCypherQuery(List<Neo4jColumnHandle> columnHandles)
-    {
-        Neo4jRemoteTableName remoteTableName = this.getRemoteTableName();
-
-        var builder = switch (remoteTableName.getType()) {
-            case NODE -> {
-                // MATCH (t:$name) return t.col1 as col1, t.col2 as col2, ...
-                Node node = Cypher.node(remoteTableName.getName()).named("t");
-                List<AliasedExpression> properties = columnHandles.stream().map(c -> node.property(c.getColumnName()).as(c.getColumnName())).toList();
-
-                yield Cypher.match(node).returning(properties);
-            }
-            case RELATIONSHIP -> {
-                // MATCH ()-[r:$name]-() RETURN r.col1 as col1, r.col2 as col2, ...
-                Relationship rel = Cypher.anyNode()
-                        .relationshipBetween(Cypher.anyNode(), remoteTableName.getName())
-                        .named("r");
-                List<AliasedExpression> properties = columnHandles.stream().map(c -> rel.property(c.getColumnName()).as(c.getColumnName())).toList();
-
-                yield Cypher.match(rel).returning(properties);
-            }
-        };
-
-        if (this.getLimit().isPresent()) {
-            return builder.limit(this.getLimit().getAsLong()).build().getCypher();
-        }
-
-        return builder.build().getCypher();
     }
 
     @Override

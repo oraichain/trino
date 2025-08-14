@@ -53,16 +53,16 @@ public class Neo4jRecordSetProvider
         Neo4jTableHandle tableHandle = (Neo4jTableHandle) table;
 
         List<Neo4jColumnHandle> columnHandles = columns.stream()
-                .map(Neo4jColumnHandle.class::cast)
+                .map(c -> (Neo4jColumnHandle) c)
                 .collect(toImmutableList());
 
-        Neo4jRelationHandle relationHandle = tableHandle.getRelationHandle();
+        String cypher = requireNonNull(client, "client is null").toCypher(tableHandle, columnHandles);
 
         return new Neo4jRecordSet(
                 this.client,
                 this.typeManager,
-                relationHandle.getDatabaseName(),
-                relationHandle.toCypherQuery(columnHandles),
+                tableHandle.getRelationHandle().getDatabaseName(),
+                cypher,
                 columnHandles);
     }
 }

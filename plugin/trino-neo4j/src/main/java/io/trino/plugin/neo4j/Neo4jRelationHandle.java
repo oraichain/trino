@@ -16,7 +16,6 @@ package io.trino.plugin.neo4j;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-import java.util.List;
 import java.util.Optional;
 
 @JsonTypeInfo(
@@ -29,8 +28,6 @@ import java.util.Optional;
 public abstract class Neo4jRelationHandle
 {
     public abstract Optional<String> getDatabaseName();
-
-    public abstract String toCypherQuery(List<Neo4jColumnHandle> columnHandles);
 
     @Override
     public abstract String toString();

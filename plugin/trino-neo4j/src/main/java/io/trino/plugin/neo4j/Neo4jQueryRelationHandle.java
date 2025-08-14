@@ -17,7 +17,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.function.table.Descriptor;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -59,12 +58,6 @@ public class Neo4jQueryRelationHandle
     public Optional<String> getDatabaseName()
     {
         return this.databaseName;
-    }
-
-    @Override
-    public String toCypherQuery(List<Neo4jColumnHandle> columnHandles)
-    {
-        return this.query;
     }
 
     @Override
