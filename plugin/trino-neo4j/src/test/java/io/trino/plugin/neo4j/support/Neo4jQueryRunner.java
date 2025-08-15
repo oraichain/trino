@@ -55,7 +55,7 @@ public class Neo4jQueryRunner
     {
         //server.loadSampleData();
 
-        try (InputStream stream = Neo4jQueryRunner.class.getResourceAsStream("/node-properties.cql")) {
+        try (InputStream stream = Neo4jQueryRunner.class.getResourceAsStream("/movie-graph-data.cql")) {
             String cypher = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
 
             server.withSession(s -> {
