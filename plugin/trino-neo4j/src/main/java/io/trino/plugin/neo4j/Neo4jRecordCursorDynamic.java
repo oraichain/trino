@@ -18,49 +18,34 @@ import io.trino.spi.type.Type;
 
 import java.util.Optional;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
-import static java.util.Objects.requireNonNull;
 
 public class Neo4jRecordCursorDynamic
-        extends Neo4jRecordCursorBase
-{
+        extends Neo4jRecordCursorBase {
     public Neo4jRecordCursorDynamic(
             Neo4jClient client,
             Neo4jTypeManager typeManager,
             Optional<String> databaseName,
-            String cypher)
-    {
+            String cypher) {
         super(client, typeManager, databaseName, cypher);
     }
 
     @Override
-    public Type getType(int field)
-    {
+    public Type getType(int field) {
         verify(field == 0, "should only be called for a single field, was: %s", field);
 
         return this.typeManager.getJsonType();
     }
 
     @Override
-    public boolean isNull(int field)
-    {
+    public boolean isNull(int field) {
         verify(field == 0, "should only be called for a single field, was: %s", field);
-        checkState(this.session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
         return this.record.get(field).isNull();
     }
 
     @Override
-    public Slice getSlice(int field)
-    {
+    public Slice getSlice(int field) {
         verify(field == 0, "should only be called for a single field, was: %s", field);
-        checkState(this.session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
         return this.typeManager.toJson(this.record.asMap());
     }
 }
