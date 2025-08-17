@@ -14,7 +14,6 @@
 package io.trino.plugin.neo4j;
 
 import io.trino.plugin.neo4j.support.BaseNeo4jTest;
-import io.trino.sql.query.QueryAssertions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.neo4j.cypherdsl.core.Cypher;
@@ -27,21 +26,19 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestNeo4jTable
-        extends BaseNeo4jTest
-{
-    public record TestCase(String cypherValue, String schemaType, String sqlValue, Consumer<TestCase> handler) {}
+        extends BaseNeo4jTest {
+    public record TestCase(String cypherValue, String schemaType, String sqlValue, Consumer<TestCase> handler) {
+    }
 
-    public TestCase testCase(String cypherValue, String schemaType, String sqlValue)
-    {
+    public TestCase testCase(String cypherValue, String schemaType, String sqlValue) {
         return new TestCase(cypherValue, schemaType, sqlValue, this::assertSuccessful);
     }
 
-    public Stream<TestCase> booleanTests()
-    {
+    public Stream<TestCase> booleanTests() {
         return Stream.of(
                 testCase("true", "boolean", "true"),
                 testCase("false", "boolean", "false"),
-                //testCase("toInteger(null)", "bigint", "CAST(NULL AS INTEGER)"),
+                // testCase("toInteger(null)", "bigint", "CAST(NULL AS INTEGER)"),
                 testCase("-2147483648", "bigint", "-2147483648"),
                 testCase("1234567890", "bigint", "1234567890"),
                 testCase("2147483647", "bigint", "2147483647"));
@@ -49,13 +46,11 @@ public class TestNeo4jTable
 
     @ParameterizedTest
     @MethodSource("booleanTests")
-    public void testTypeMappings(TestCase testCase)
-    {
+    public void testTypeMappings(TestCase testCase) {
         testCase.handler.accept(testCase);
     }
 
-    public void assertSuccessful(TestCase testCase)
-    {
+    public void assertSuccessful(TestCase testCase) {
         String nodeLabel = "TestNode" + UUID.randomUUID().toString().replaceAll("-", "");
 
         String createNode = Cypher.create(Cypher.node(nodeLabel, "TestNode")
@@ -68,9 +63,8 @@ public class TestNeo4jTable
 
         String query = "select value from \"(%s)\"".formatted(nodeLabel);
 
-        QueryAssertions.QueryAssert assertion = assertThat(this.query(query));
-
-        assertion.matches("VALUES ROW(cast(%s as %s))".formatted(testCase.sqlValue, testCase.schemaType));
+        assertThat(query(query))
+                .matches("VALUES ROW(cast(%s as %s))".formatted(testCase.sqlValue, testCase.schemaType));
 
         String deleteNode = Cypher.match(Cypher.node(nodeLabel).named("n"))
                 .delete("n")
@@ -80,8 +74,7 @@ public class TestNeo4jTable
         this.executeCypher(deleteNode);
     }
 
-    private void executeCypher(String cypher)
-    {
+    private void executeCypher(String cypher) {
         this.getQueryRunner().execute("""
                   select * from table(
                     system.query(

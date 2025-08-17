@@ -14,6 +14,7 @@
 package io.trino.plugin.neo4j;
 
 import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.ConfigurationException;
 import com.google.inject.Inject;
@@ -33,6 +34,7 @@ import org.neo4j.cypherdsl.core.renderer.Dialect;
 import org.neo4j.cypherdsl.core.renderer.Renderer;
 import org.neo4j.driver.AuthToken;
 import org.neo4j.driver.AuthTokens;
+import org.neo4j.driver.Config;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 import org.neo4j.driver.Session;
@@ -53,8 +55,7 @@ import static io.trino.spi.StandardErrorCode.TABLE_NOT_FOUND;
 import static java.util.Locale.ENGLISH;
 
 public class Neo4jClient
-        implements AutoCloseable
-{
+        implements AutoCloseable {
     private static final Logger log = Logger.get(Neo4jClient.class);
 
     private static final String SYSTEM_DATABASE = "system";
@@ -65,6 +66,7 @@ public class Neo4jClient
 
     private final Cache<SchemaTableName, Neo4jRemoteTableName> tableNameCache;
     private final Cache<SchemaTableName, Neo4jTable> tableCache;
+    private final Cache<String, String> cypherQueryCache;
 
     private Configuration rendererConfig = Configuration.newConfig().withDialect(Dialect.NEO4J_5).build();
     private Renderer renderer = Renderer.getRenderer(rendererConfig);
@@ -72,59 +74,77 @@ public class Neo4jClient
     @Inject
     public Neo4jClient(
             Neo4jConnectorConfig config,
-            Neo4jTypeManager typeManager)
-    {
-        this.driver = GraphDatabase.driver(config.getURI(), getAuthToken(config));
+            Neo4jTypeManager typeManager) {
+        this.driver = GraphDatabase.driver(config.getURI(), getAuthToken(config), buildDriverConfig(config));
         this.typeManager = typeManager;
         this.tableNameCache = EvictableCacheBuilder.newBuilder()
-                .expireAfterWrite(Duration.ofMinutes(1))
+                .expireAfterWrite(config.getTableNameCacheExpiration().toJavaTime())
+                .maximumSize(config.getTableNameCacheMaxSize())
                 .build();
 
         this.tableCache = EvictableCacheBuilder.newBuilder()
-                .expireAfterWrite(Duration.ofMinutes(1))
+                .expireAfterWrite(config.getTableCacheExpiration().toJavaTime())
+                .maximumSize(config.getTableCacheMaxSize())
+                .build();
+
+        this.cypherQueryCache = CacheBuilder.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(5))
+                .maximumSize(200)
                 .build();
     }
 
-    private static AuthToken getAuthToken(Neo4jConnectorConfig config)
-    {
+    private static AuthToken getAuthToken(Neo4jConnectorConfig config) {
         return switch (config.getAuthType().toLowerCase(ENGLISH)) {
             case "basic" -> AuthTokens.basic(config.getBasicAuthUser(), config.getBasicAuthPassword());
             case "bearer" -> AuthTokens.bearer(config.getBearerAuthToken());
             case "none" -> AuthTokens.none();
-            default -> throw new ConfigurationException(ImmutableList.of(new Message("Unknown neo4j.auth.type: %s".formatted(config.getAuthType()))));
+            default -> throw new ConfigurationException(
+                    ImmutableList.of(new Message("Unknown neo4j.auth.type: %s".formatted(config.getAuthType()))));
         };
     }
 
-    public List<String> listSchemaNames(ConnectorSession connectorSession)
-    {
-        try (Session session = this.driver.session(SessionConfig.forDatabase(SYSTEM_DATABASE))) {
-            return session.executeRead(tx -> {
-                return tx.run("SHOW DATABASES YIELD name WHERE name <> 'system' RETURN distinct(name)")
-                        .stream()
-                        .map(r -> r.get(0).asString())
-                        .map(s -> s.toLowerCase(ENGLISH))
-                        .collect(toImmutableList());
-            });
-        }
+    private static Config buildDriverConfig(Neo4jConnectorConfig config) {
+        return Config.builder()
+                .withMaxConnectionPoolSize(config.getMaxConnectionPoolSize())
+                .withConnectionAcquisitionTimeout((long) config.getConnectionAcquisitionTimeout().getValue(),
+                        config.getConnectionAcquisitionTimeout().getUnit())
+                .withMaxConnectionLifetime((long) config.getMaxConnectionLifetime().getValue(),
+                        config.getMaxConnectionLifetime().getUnit())
+                .withConnectionLivenessCheckTimeout(
+                        config.isConnectionLivenessCheckTimeout() ? 5 : 0, java.util.concurrent.TimeUnit.SECONDS)
+                .withTrustStrategy(Config.TrustStrategy.trustSystemCertificates())
+                .build();
+    }
+
+    public List<String> listSchemaNames(ConnectorSession connectorSession) {
+        return RetryUtils.executeWithRetry(() -> {
+            try (Session session = this.driver.session(SessionConfig.forDatabase(SYSTEM_DATABASE))) {
+                return session.executeRead(tx -> {
+                    return tx.run("SHOW DATABASES YIELD name WHERE name <> 'system' RETURN distinct(name)")
+                            .stream()
+                            .map(r -> r.get(0).asString())
+                            .map(s -> s.toLowerCase(ENGLISH))
+                            .collect(toImmutableList());
+                });
+            }
+        });
     }
 
     // Nodes and relationships are mapped to tables.
-    public List<SchemaTableName> listTables(ConnectorSession connectorSession, Optional<String> schemaName)
-    {
-        Statement statement =
-                Cypher.union(
-                        Cypher.call("db.labels")
-                                .yield("label")
-                                .returning(
-                                        Cypher.literalOf("node").as("type"),
-                                        Cypher.name("label").as("name"))
-                                .build(),
-                        Cypher.call("db.relationshipTypes")
-                                .yield("relationshipType")
-                                .returning(
-                                        Cypher.literalOf("relationship").as("type"),
-                                        Cypher.name("relationshipType").as("name"))
-                                .build());
+    public List<SchemaTableName> listTables(ConnectorSession connectorSession, Optional<String> schemaName) {
+        Statement statement = Cypher.union(
+                Cypher.call("db.labels")
+                        .yield("label")
+                        .returning(
+                                Cypher.literalOf("node").as("type"),
+                                Cypher.name("label").as("name"))
+                        .build(),
+                Cypher.call("db.relationshipTypes")
+                        .yield("relationshipType")
+                        .returning(
+                                Cypher.literalOf("relationship").as("type"),
+                                Cypher.name("relationshipType").as("name"))
+                        .build());
 
         String query = statement.getCypher();
         String databaseName = schemaName.orElseThrow();
@@ -138,8 +158,10 @@ public class Neo4jClient
                             String name = r.get("name").asString();
                             String type = r.get("type").asString();
                             return switch (type) {
-                                case "node" -> new SchemaTableName(schemaName.orElse(DEFAULT_DATABASE), "(%s)".formatted(name));
-                                case "relationship" -> new SchemaTableName(schemaName.orElse(DEFAULT_DATABASE), "[%s]".formatted(name));
+                                case "node" ->
+                                    new SchemaTableName(schemaName.orElse(DEFAULT_DATABASE), "(%s)".formatted(name));
+                                case "relationship" ->
+                                    new SchemaTableName(schemaName.orElse(DEFAULT_DATABASE), "[%s]".formatted(name));
                                 default -> throw new IllegalStateException("Unknown entity type: '%s'".formatted(type));
                             };
                         })
@@ -148,30 +170,25 @@ public class Neo4jClient
         }
     }
 
-    public Neo4jTable getTable(SchemaTableName schemaTableName)
-    {
+    public Neo4jTable getTable(SchemaTableName schemaTableName) {
         try {
             return this.tableCache.get(schemaTableName, () -> loadTable(schemaTableName));
-        }
-        catch (ExecutionException e) {
+        } catch (ExecutionException e) {
             throwIfInstanceOf(e.getCause(), TrinoException.class);
             throw new RuntimeException(e);
         }
     }
 
-    private Neo4jRemoteTableName getRemoteTableName(SchemaTableName schemaTableName)
-    {
+    private Neo4jRemoteTableName getRemoteTableName(SchemaTableName schemaTableName) {
         try {
             return this.tableNameCache.get(schemaTableName, () -> this.loadRemoteTableName(schemaTableName));
-        }
-        catch (ExecutionException e) {
+        } catch (ExecutionException e) {
             throwIfInstanceOf(e.getCause(), TrinoException.class);
             throw new RuntimeException(e);
         }
     }
 
-    private Neo4jTable loadTable(SchemaTableName schemaTableName)
-    {
+    private Neo4jTable loadTable(SchemaTableName schemaTableName) {
         Neo4jRemoteTableName remoteTableName = this.getRemoteTableName(schemaTableName);
 
         final Neo4jRemoteTableName.Type tableType = remoteTableName.getType();
@@ -198,8 +215,7 @@ public class Neo4jClient
         };
 
         Map<String, Object> parameters = Map.of(
-                "name", remoteTableName.getName()
-        );
+                "name", remoteTableName.getName());
 
         String databaseName = remoteTableName.getDatabaseName();
 
@@ -216,21 +232,21 @@ public class Neo4jClient
                                 r.get("mandatory").asBoolean()))
                         .collect(toImmutableList());
 
-                Neo4jTableHandle tableHandle = new Neo4jTableHandle(new Neo4jNamedRelationHandle(schemaTableName, remoteTableName, NODE, OptionalLong.empty()));
+                Neo4jTableHandle tableHandle = new Neo4jTableHandle(
+                        new Neo4jNamedRelationHandle(schemaTableName, remoteTableName, NODE, OptionalLong.empty()));
 
                 return new Neo4jTable(tableHandle, columnHandles);
             });
         }
     }
 
-    private Neo4jRemoteTableName loadRemoteTableName(SchemaTableName schemaTableName)
-    {
+    private Neo4jRemoteTableName loadRemoteTableName(SchemaTableName schemaTableName) {
         String tableName = schemaTableName.getTableName();
 
         final Neo4jRemoteTableName.Type tableType = getTableType(tableName);
 
-        //Cypher.call("db.labels").yield(Cypher.name("label"))
-        //        .where(Cypher.call(Cypher.toLower()))
+        // Cypher.call("db.labels").yield(Cypher.name("label"))
+        // .where(Cypher.call(Cypher.toLower()))
 
         String query = switch (tableType) {
             case NODE -> """
@@ -246,8 +262,7 @@ public class Neo4jClient
         };
 
         Map<String, Object> parameters = Map.of(
-                "tableName", schemaTableName.getTableName().substring(1, schemaTableName.getTableName().length() - 1)
-        );
+                "tableName", schemaTableName.getTableName().substring(1, schemaTableName.getTableName().length() - 1));
 
         String databaseName = schemaTableName.getSchemaName();
 
@@ -266,29 +281,30 @@ public class Neo4jClient
         }
     }
 
-    private static Neo4jRemoteTableName.Type getTableType(String tableName)
-    {
+    private static Neo4jRemoteTableName.Type getTableType(String tableName) {
         if (tableName.startsWith("(")) {
             return Neo4jRemoteTableName.Type.NODE;
-        }
-        else if (tableName.startsWith("[")) {
+        } else if (tableName.startsWith("[")) {
             return Neo4jRemoteTableName.Type.RELATIONSHIP;
-        }
-        else {
+        } else {
             throw new IllegalStateException("Bad table name: %s".formatted(tableName));
         }
     }
 
-    public String toCypher(Neo4jTableHandle table, List<Neo4jColumnHandle> columnHandles)
-    {
+    public String toCypher(Neo4jTableHandle table, List<Neo4jColumnHandle> columnHandles) {
         if (table.getRelationHandle() instanceof Neo4jQueryRelationHandle queryHandle) {
             return queryHandle.getQuery();
         }
 
+        // Create cache key from table and column handles
+        String cacheKey = createCacheKey(table, columnHandles);
+        String cachedQuery = cypherQueryCache.getIfPresent(cacheKey);
+        if (cachedQuery != null) {
+            return cachedQuery;
+        }
+
         Neo4jNamedRelationHandle namedRelation = table.getRequiredNamedRelation();
-
         Neo4jRemoteTableName remoteTableName = namedRelation.getRemoteTableName();
-
         final Neo4jRemoteTableName.Type tableType = remoteTableName.getType();
 
         var builder = switch (tableType) {
@@ -325,32 +341,52 @@ public class Neo4jClient
             }
         };
 
-        return namedRelation.getLimit().isPresent() ?
-                renderer.render(builder.limit(namedRelation.getLimit().getAsLong()).build()) :
-                renderer.render(builder.build());
+        String query = namedRelation.getLimit().isPresent()
+                ? renderer.render(builder.limit(namedRelation.getLimit().getAsLong()).build())
+                : renderer.render(builder.build());
+
+        // Cache the generated query
+        cypherQueryCache.put(cacheKey, query);
+        return query;
+    }
+
+    private String createCacheKey(Neo4jTableHandle table, List<Neo4jColumnHandle> columnHandles) {
+        StringBuilder keyBuilder = new StringBuilder();
+        Neo4jNamedRelationHandle namedRelation = table.getRequiredNamedRelation();
+
+        keyBuilder.append(namedRelation.getRemoteTableName().getName())
+                .append("::")
+                .append(namedRelation.getRemoteTableName().getType())
+                .append("::");
+
+        for (Neo4jColumnHandle column : columnHandles) {
+            keyBuilder.append(column.getColumnName()).append(",");
+        }
+
+        if (namedRelation.getLimit().isPresent()) {
+            keyBuilder.append("::limit:").append(namedRelation.getLimit().getAsLong());
+        }
+
+        return keyBuilder.toString();
     }
 
     @Override
     public void close()
-            throws Exception
-    {
+            throws Exception {
         this.driver.close();
     }
 
-    public Session newSession(Optional<String> databaseName)
-    {
+    public Session newSession(Optional<String> databaseName) {
         return this.driver.session(databaseName
                 .map(SessionConfig::forDatabase)
                 .orElse(SessionConfig.defaultConfig()));
     }
 
-    private void logQuery(String databaseName, String cypher)
-    {
+    private void logQuery(String databaseName, String cypher) {
         logQuery(databaseName, cypher, Map.of());
     }
 
-    private void logQuery(String databaseName, String cypher, Map<String, Object> parameters)
-    {
+    private void logQuery(String databaseName, String cypher, Map<String, Object> parameters) {
         log.debug("Executing query: database=%s cypher=%s parameters=%s ", databaseName, cypher, parameters);
     }
 }

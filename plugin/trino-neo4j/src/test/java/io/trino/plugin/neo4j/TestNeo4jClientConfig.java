@@ -14,37 +14,54 @@
 package io.trino.plugin.neo4j;
 
 import com.google.common.collect.ImmutableMap;
+import io.airlift.units.Duration;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static io.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static io.airlift.configuration.testing.ConfigAssertions.recordDefaults;
 
-public class TestNeo4jClientConfig
-{
+public class TestNeo4jClientConfig {
     @Test
-    public void testDefaults()
-    {
+    public void testDefaults() {
         assertRecordedDefaults(recordDefaults(Neo4jConnectorConfig.class)
                 .setURI(null)
                 .setAuthType("basic")
                 .setBasicAuthUser("neo4j")
                 .setBasicAuthPassword("")
-                .setBearerAuthToken(null));
+                .setBearerAuthToken(null)
+                .setMaxConnectionPoolSize(100)
+                .setConnectionAcquisitionTimeout(Duration.succinctDuration(60, TimeUnit.SECONDS))
+                .setMaxConnectionLifetime(Duration.succinctDuration(1, TimeUnit.HOURS))
+                .setConnectionIdleTimeout(Duration.succinctDuration(30, TimeUnit.MINUTES))
+                .setConnectionLivenessCheckTimeout(true)
+                .setTableCacheExpiration(Duration.succinctDuration(1, TimeUnit.MINUTES))
+                .setTableNameCacheExpiration(Duration.succinctDuration(1, TimeUnit.MINUTES))
+                .setTableCacheMaxSize(1000)
+                .setTableNameCacheMaxSize(1000));
     }
 
     @Test
-    public void testExplicitPropertyMappings()
-    {
+    public void testExplicitPropertyMappings() {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("neo4j.uri", "bolt://1.2.3.4:12345")
                 .put("neo4j.auth.type", "bearer")
                 .put("neo4j.auth.basic.user", "foobar")
                 .put("neo4j.auth.basic.password", "password")
                 .put("neo4j.auth.bearer.token", "foobarbaz")
+                .put("neo4j.connection.max-pool-size", "200")
+                .put("neo4j.connection.acquisition-timeout", "30s")
+                .put("neo4j.connection.max-lifetime", "2h")
+                .put("neo4j.connection.idle-timeout", "15m")
+                .put("neo4j.connection.liveness-check-timeout", "false")
+                .put("neo4j.cache.table-expiration", "5m")
+                .put("neo4j.cache.table-name-expiration", "3m")
+                .put("neo4j.cache.table-max-size", "2000")
+                .put("neo4j.cache.table-name-max-size", "1500")
                 .buildOrThrow();
 
         Neo4jConnectorConfig expected = new Neo4jConnectorConfig()
@@ -52,7 +69,16 @@ public class TestNeo4jClientConfig
                 .setAuthType("bearer")
                 .setBasicAuthUser("foobar")
                 .setBasicAuthPassword("password")
-                .setBearerAuthToken("foobarbaz");
+                .setBearerAuthToken("foobarbaz")
+                .setMaxConnectionPoolSize(200)
+                .setConnectionAcquisitionTimeout(Duration.succinctDuration(30, TimeUnit.SECONDS))
+                .setMaxConnectionLifetime(Duration.succinctDuration(2, TimeUnit.HOURS))
+                .setConnectionIdleTimeout(Duration.succinctDuration(15, TimeUnit.MINUTES))
+                .setConnectionLivenessCheckTimeout(false)
+                .setTableCacheExpiration(Duration.succinctDuration(5, TimeUnit.MINUTES))
+                .setTableNameCacheExpiration(Duration.succinctDuration(3, TimeUnit.MINUTES))
+                .setTableCacheMaxSize(2000)
+                .setTableNameCacheMaxSize(1500);
 
         assertFullMapping(properties, expected);
     }

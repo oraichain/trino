@@ -20,13 +20,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static java.util.Objects.requireNonNull;
 
 public class Neo4jRecordCursorTyped
-        extends Neo4jRecordCursorBase
-{
+        extends Neo4jRecordCursorBase {
     private final List<Type> columnTypes;
 
     public Neo4jRecordCursorTyped(
@@ -34,57 +31,35 @@ public class Neo4jRecordCursorTyped
             Neo4jTypeManager typeManager,
             Optional<String> databaseName,
             String cypher,
-            List<Neo4jColumnHandle> columnHandles)
-    {
+            List<Neo4jColumnHandle> columnHandles) {
         super(client, typeManager, databaseName, cypher);
         this.columnTypes = columnHandles.stream().map(Neo4jColumnHandle::getColumnType).collect(toImmutableList());
     }
 
     @Override
-    public Type getType(int field)
-    {
+    public Type getType(int field) {
         checkArgument(field < this.columnTypes.size(), "Invalid field index");
 
         return this.columnTypes.get(field);
     }
 
     @Override
-    public boolean getBoolean(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public boolean getBoolean(int field) {
         return this.typeManager.toBoolean(record.get(field), this.columnTypes.get(field));
     }
 
     @Override
-    public long getLong(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public long getLong(int field) {
         return this.typeManager.toLong(record.get(field), this.columnTypes.get(field));
     }
 
     @Override
-    public double getDouble(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public double getDouble(int field) {
         return this.typeManager.toDouble(record.get(field), this.columnTypes.get(field));
     }
 
     @Override
-    public Slice getSlice(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public Slice getSlice(int field) {
         if (this.columnTypes.size() == 1 && this.getType(field).equals(this.typeManager.getDynamicResultColumn())) {
             return typeManager.toJson(record);
         }
@@ -93,22 +68,12 @@ public class Neo4jRecordCursorTyped
     }
 
     @Override
-    public Object getObject(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public Object getObject(int field) {
         return this.typeManager.toObject(record.get(field), getType(field));
     }
 
     @Override
-    public boolean isNull(int field)
-    {
-        checkState(session.isOpen(), "cursor is closed");
-        requireNonNull(result, "result is null");
-        requireNonNull(record, "record is null");
-
+    public boolean isNull(int field) {
         return record.get(field).isNull();
     }
 }

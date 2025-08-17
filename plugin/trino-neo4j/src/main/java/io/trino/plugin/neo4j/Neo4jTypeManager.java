@@ -15,6 +15,8 @@ package io.trino.plugin.neo4j;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import io.airlift.slice.Slice;
@@ -69,8 +71,7 @@ import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.util.Objects.requireNonNull;
 import static java.util.regex.Pattern.CASE_INSENSITIVE;
 
-public class Neo4jTypeManager
-{
+public class Neo4jTypeManager {
     private final TypeSystem typeSystem;
     private final ObjectMapper objectMapper;
 
@@ -78,54 +79,80 @@ public class Neo4jTypeManager
     private final Descriptor dynamicResultDescriptor;
     private final Neo4jColumnHandle dynamicResultColumn;
 
+    // Cache for frequently accessed type conversions
+    private final Cache<String, Type> propertyTypeCache;
+    private final Cache<List<String>, Type> propertyTypesCache;
+
     @Inject
     public Neo4jTypeManager(
             TypeManager typeManager,
             TypeSystem typeSystem,
-            ObjectMapper objectMapper)
-    {
+            ObjectMapper objectMapper) {
         this.typeSystem = requireNonNull(typeSystem, "typeSystem is null");
         this.objectMapper = requireNonNull(objectMapper, "objectMapper is null");
 
         this.jsonType = typeManager.getType(new TypeSignature(StandardTypes.JSON));
-        this.dynamicResultDescriptor = new Descriptor(ImmutableList.of(new Descriptor.Field("result", Optional.of(this.jsonType))));
+        this.dynamicResultDescriptor = new Descriptor(
+                ImmutableList.of(new Descriptor.Field("result", Optional.of(this.jsonType))));
         this.dynamicResultColumn = new Neo4jColumnHandle("result", this.jsonType, true);
+
+        // Initialize caches for type conversions
+        this.propertyTypeCache = CacheBuilder.newBuilder()
+                .maximumSize(100)
+                .build();
+        this.propertyTypesCache = CacheBuilder.newBuilder()
+                .maximumSize(500)
+                .build();
     }
 
-    public Type getJsonType()
-    {
+    public Type getJsonType() {
         return this.jsonType;
     }
 
-    public Descriptor getDynamicResultDescriptor()
-    {
+    public Descriptor getDynamicResultDescriptor() {
         return this.dynamicResultDescriptor;
     }
 
-    public boolean isDynamicResultDescriptor(Descriptor descriptor)
-    {
+    public boolean isDynamicResultDescriptor(Descriptor descriptor) {
         return this.dynamicResultDescriptor.equals(descriptor);
     }
 
-    public ColumnHandle getDynamicResultColumn()
-    {
+    public ColumnHandle getDynamicResultColumn() {
         return this.dynamicResultColumn;
     }
 
-    public Type propertyTypesToTrinoType(List<String> propertyTypes)
-    {
+    public Type propertyTypesToTrinoType(List<String> propertyTypes) {
+        return propertyTypesCache.getIfPresent(propertyTypes) != null
+                ? propertyTypesCache.getIfPresent(propertyTypes)
+                : computePropertyTypesToTrinoType(propertyTypes);
+    }
+
+    private Type computePropertyTypesToTrinoType(List<String> propertyTypes) {
+        Type result;
         if (propertyTypes.size() != 1) {
             // A property can have values of different types, bail to JSON in this case.
-            // throw new TrinoException(NEO4J_AMBIGUOUS_PROPERTY_TYPE, "%s".formatted(String.join(", ", propertyTypes)));
-            return this.jsonType;
+            result = this.jsonType;
+        } else {
+            result = propertyTypeToTrinoType(propertyTypes.get(0));
         }
-        return propertyTypeToTrinoType(propertyTypes.get(0));
+        propertyTypesCache.put(propertyTypes, result);
+        return result;
     }
 
     private static final Pattern NEO4J_ARRAY_PROPERTY = Pattern.compile("(.*)Array", CASE_INSENSITIVE);
 
-    public Type propertyTypeToTrinoType(String propertyTypeName)
-    {
+    public Type propertyTypeToTrinoType(String propertyTypeName) {
+        Type cached = propertyTypeCache.getIfPresent(propertyTypeName);
+        if (cached != null) {
+            return cached;
+        }
+
+        Type result = computePropertyTypeToTrinoType(propertyTypeName);
+        propertyTypeCache.put(propertyTypeName, result);
+        return result;
+    }
+
+    private Type computePropertyTypeToTrinoType(String propertyTypeName) {
         return switch (propertyTypeName.toLowerCase(Locale.ENGLISH)) {
             case "boolean" -> BOOLEAN;
             case "integer", "long" -> BIGINT;
@@ -146,13 +173,13 @@ public class Neo4jTypeManager
                     String listElementTypeName = matcher.group(1);
                     yield new ArrayType(propertyTypeToTrinoType(listElementTypeName));
                 }
-                throw new TrinoException(NEO4J_UNSUPPORTED_PROPERTY_TYPE, "Unsupported Neo4j property type: " + propertyTypeName);
+                throw new TrinoException(NEO4J_UNSUPPORTED_PROPERTY_TYPE,
+                        "Unsupported Neo4j property type: " + propertyTypeName);
             }
         };
     }
 
-    public boolean toBoolean(Value value, Type type)
-    {
+    public boolean toBoolean(Value value, Type type) {
         if (value.hasType(typeSystem.BOOLEAN())) {
             if (type.equals(BOOLEAN)) {
                 return value.asBoolean();
@@ -162,8 +189,7 @@ public class Neo4jTypeManager
         throw typeMismatchException(value, type);
     }
 
-    public long toLong(Value value, Type type)
-    {
+    public long toLong(Value value, Type type) {
         if (value.hasType(typeSystem.DATE())) {
             if (type.equals(DATE)) {
                 return value.asLocalDate().toEpochDay();
@@ -204,8 +230,7 @@ public class Neo4jTypeManager
         throw typeMismatchException(value, type);
     }
 
-    public double toDouble(Value value, Type type)
-    {
+    public double toDouble(Value value, Type type) {
         // float -> double
         if (value.hasType(typeSystem.FLOAT())) {
             if (type.equals(DOUBLE)) {
@@ -223,8 +248,7 @@ public class Neo4jTypeManager
         throw typeMismatchException(value, type);
     }
 
-    public Slice toSlice(Value value, Type type)
-    {
+    public Slice toSlice(Value value, Type type) {
         // string -> varchar, json
         if (value.hasType(typeSystem.STRING())) {
             if (type.equals(VARCHAR)) {
@@ -246,8 +270,10 @@ public class Neo4jTypeManager
         }
 
         // number -> ?
-        /*if (value.hasType(typeSystem.NUMBER())) {
-        }*/
+        /*
+         * if (value.hasType(typeSystem.NUMBER())) {
+         * }
+         */
 
         // float -> varchar, json
         if (value.hasType(typeSystem.FLOAT())) {
@@ -343,8 +369,10 @@ public class Neo4jTypeManager
             }
         }
 
-        /*if (value.hasType(typeSystem.PATH())) {
-        }*/
+        /*
+         * if (value.hasType(typeSystem.PATH())) {
+         * }
+         */
 
         if (value.hasType(typeSystem.POINT())) {
             if (type.equals(this.jsonType)) {
@@ -362,8 +390,7 @@ public class Neo4jTypeManager
         throw typeMismatchException(value, type);
     }
 
-    public Object toObject(Value value, Type type)
-    {
+    public Object toObject(Value value, Type type) {
         // localdatetime -> timestamp(7-9)
         if (value.hasType(typeSystem.LOCAL_DATE_TIME())) {
             if (type instanceof TimestampType timestampType) {
@@ -421,62 +448,51 @@ public class Neo4jTypeManager
         throw typeMismatchException(value, type);
     }
 
-    private void writeObject(BlockBuilder b, Type type, Object o)
-    {
+    private void writeObject(BlockBuilder b, Type type, Object o) {
         Class<?> javaType = type.getJavaType();
         if (javaType == boolean.class) {
-            //type.writeBoolean(b, (boolean) o);
+            // type.writeBoolean(b, (boolean) o);
             type.writeBoolean(b, this.toBoolean(Values.value(o), type));
-        }
-        else if (javaType == long.class) {
-            //type.writeLong(b, (long) o);
+        } else if (javaType == long.class) {
+            // type.writeLong(b, (long) o);
             type.writeLong(b, this.toLong(Values.value(o), type));
-        }
-        else if (javaType == double.class) {
-            //type.writeDouble(b, (double) o);
+        } else if (javaType == double.class) {
+            // type.writeDouble(b, (double) o);
             type.writeDouble(b, this.toDouble(Values.value(o), type));
-        }
-        else if (javaType == Slice.class) {
+        } else if (javaType == Slice.class) {
             Slice slice = this.toSlice(Values.value(o), type);
             type.writeSlice(b, slice, 0, slice.length());
-        }
-        else {
+        } else {
             type.writeObject(b, this.toObject(Values.value(o), type));
         }
     }
 
-    public Slice toJson(Object value)
-    {
+    public Slice toJson(Object value) {
         try {
             return Slices.wrappedBuffer(this.objectMapper.writeValueAsBytes(value));
-        }
-        catch (JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new TrinoException(JSON_OUTPUT_CONVERSION_ERROR, "Conversion to JSON failed for: " + value, e);
         }
     }
 
-    public Slice toJson(Value value)
-    {
+    public Slice toJson(Value value) {
         try {
             return Slices.wrappedBuffer(this.objectMapper.writeValueAsBytes(value.asObject()));
-        }
-        catch (JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new TrinoException(JSON_OUTPUT_CONVERSION_ERROR, "Conversion to JSON failed for: " + value, e);
         }
     }
 
-    public Slice toJson(Record record)
-    {
+    public Slice toJson(Record record) {
         try {
             return Slices.wrappedBuffer(this.objectMapper.writeValueAsBytes(record.asMap()));
-        }
-        catch (JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new TrinoException(JSON_OUTPUT_CONVERSION_ERROR, "Conversion to JSON failed for: " + record, e);
         }
     }
 
-    private TrinoException typeMismatchException(Value value, Type type)
-    {
-        return new TrinoException(TYPE_MISMATCH, "Cannot convert Neo4j value '%s' to '%s'".formatted(value.type().name(), type.getDisplayName()));
+    private TrinoException typeMismatchException(Value value, Type type) {
+        return new TrinoException(TYPE_MISMATCH,
+                "Cannot convert Neo4j value '%s' to '%s'".formatted(value.type().name(), type.getDisplayName()));
     }
 }

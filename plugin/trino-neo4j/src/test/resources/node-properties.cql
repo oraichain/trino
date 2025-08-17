@@ -1,0 +1,11 @@
+CREATE (p1:Person {name: 'Alice', age: 30, active: true, score: 95.5, created: date('2023-01-01')}),
+       (p2:Person {name: 'Bob', age: 25, active: false, score: 87.2, created: date('2023-02-15')}),
+       (p3:Person {name: 'Charlie', age: 35, active: true, score: 92.8, created: date('2023-03-10')}),
+       (c1:Company {name: 'Tech Corp', founded: 2010, employees: 500, revenue: 10.5}),
+       (c2:Company {name: 'Data Inc', founded: 2015, employees: 250, revenue: 5.2}),
+       (p1)-[:WORKS_FOR {since: date('2023-01-15'), role: 'Engineer'}]->(c1),
+       (p2)-[:WORKS_FOR {since: date('2023-02-01'), role: 'Analyst'}]->(c2),
+       (p3)-[:WORKS_FOR {since: date('2023-01-20'), role: 'Manager'}]->(c1),
+       (p1)-[:KNOWS {since: date('2020-01-01'), strength: 0.8}]->(p2),
+       (p2)-[:KNOWS {since: date('2021-06-15'), strength: 0.6}]->(p3),
+       (p1)-[:KNOWS {since: date('2022-03-20'), strength: 0.9}]->(p3)
