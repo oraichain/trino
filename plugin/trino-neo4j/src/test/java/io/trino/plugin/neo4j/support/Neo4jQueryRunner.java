@@ -26,22 +26,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-public class Neo4jQueryRunner
-{
+public class Neo4jQueryRunner {
     private static final Logger log = Logger.get(Neo4jQueryRunner.class);
 
-    private Neo4jQueryRunner() {}
+    private Neo4jQueryRunner() {
+    }
 
     public static DistributedQueryRunner createDefaultQueryRunner()
-            throws Exception
-    {
+            throws Exception {
         Neo4JContainerTestingServer neo4jServer = new Neo4JContainerTestingServer();
         return createDefaultQueryRunner(neo4jServer);
     }
 
     public static DistributedQueryRunner createDefaultQueryRunner(Neo4jTestingServer neo4jServer)
-            throws Exception
-    {
+            throws Exception {
         return createNeo4jQueryRunner(
                 neo4jServer,
                 ImmutableMap.of(),
@@ -51,11 +49,10 @@ public class Neo4jQueryRunner
     public static DistributedQueryRunner createNeo4jQueryRunner(Neo4jTestingServer server,
             Map<String, String> extraProperties,
             Map<String, String> connectorProperties)
-            throws Exception
-    {
-        //server.loadSampleData();
+            throws Exception {
+        // server.loadSampleData();
 
-        try (InputStream stream = Neo4jQueryRunner.class.getResourceAsStream("/movie-graph-data.cql")) {
+        try (InputStream stream = Neo4jQueryRunner.class.getResourceAsStream("/node-properties.cql")) {
             String cypher = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
 
             server.withSession(s -> {
@@ -79,15 +76,13 @@ public class Neo4jQueryRunner
             log.info("\n====\n%s\n====", queryRunner.getCoordinator().getBaseUrl());
             log.info("======== SERVER STARTED ========");
             return queryRunner;
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
             Closeables.closeAllSuppress(e, queryRunner);
             throw e;
         }
     }
 
-    private static Session createSession()
-    {
+    private static Session createSession() {
         return TestingSession.testSessionBuilder()
                 .setCatalog("neo4j")
                 .setSchema("neo4j")
@@ -95,8 +90,7 @@ public class Neo4jQueryRunner
     }
 
     public static void main(String[] args)
-            throws Exception
-    {
+            throws Exception {
         Neo4JContainerTestingServer neo4jServer = new Neo4JContainerTestingServer();
         Neo4jQueryRunner.createNeo4jQueryRunner(neo4jServer, ImmutableMap.of(), ImmutableMap.of());
     }
