@@ -18,6 +18,7 @@ import com.google.inject.Module;
 import com.google.inject.Scopes;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
+import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
 
 public final class DuckDbHttpModule
         implements Module
@@ -30,6 +31,8 @@ public final class DuckDbHttpModule
         binder.bind(DuckDbHttpSplitManager.class).in(Scopes.SINGLETON);
         binder.bind(DuckDbHttpPageSourceProvider.class).in(Scopes.SINGLETON);
         binder.bind(DuckDbHttpClient.class).in(Scopes.SINGLETON);
+
+        httpClientBinder(binder).bindHttpClient("duckdb-http", ForDuckDbHttp.class);
         configBinder(binder).bindConfig(DuckDbHttpConfig.class);
     }
 }

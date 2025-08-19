@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.duckdbhttp;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 
 public final class DuckDbHttpTransactionHandle
@@ -20,5 +22,17 @@ public final class DuckDbHttpTransactionHandle
 {
     public static final DuckDbHttpTransactionHandle INSTANCE = new DuckDbHttpTransactionHandle();
 
+    @JsonCreator
+    public static DuckDbHttpTransactionHandle create()
+    {
+        return INSTANCE;
+    }
+
     private DuckDbHttpTransactionHandle() {}
+
+    @JsonProperty
+    public String getIdentifier()
+    {
+        return "duckdb-http-transaction";
+    }
 }

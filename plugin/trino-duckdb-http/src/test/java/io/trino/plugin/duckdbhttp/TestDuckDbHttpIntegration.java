@@ -16,13 +16,14 @@ package io.trino.plugin.duckdbhttp;
 import com.google.common.collect.ImmutableMap;
 import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.QueryRunner;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-final class TestDuckDbHttpConnectorTest
+final class TestDuckDbHttpIntegration
         extends AbstractTestQueryFramework
 {
     private TestingDuckDbHttpServer server;
@@ -44,7 +45,7 @@ final class TestDuckDbHttpConnectorTest
         assertThat(computeActual("SHOW SCHEMAS").getOnlyColumnAsSet())
                 .contains("main", "test");
     }
-    
+
     @Test
     void testBasicAuthSupport()
             throws Exception
@@ -54,14 +55,14 @@ final class TestDuckDbHttpConnectorTest
         try (TestingDuckDbHttpServer basicAuthServer = new TestingDuckDbHttpServer()) {
             String baseUrl = basicAuthServer.getHttpEndpoint().toString();
             String basicAuthUrl = baseUrl.replace("http://", "http://testuser:testpass@");
-            
+
             // Verify the URL format is correct
             assertThat(basicAuthUrl).contains("testuser:testpass@");
-            
+
             // This should not throw an exception during connector creation
             QueryRunner basicAuthRunner = DuckDbHttpQueryRunner.createQueryRunner(
                     ImmutableMap.of("http-endpoint", basicAuthUrl));
-            
+
             // The connector should be created successfully
             // Authentication will be handled automatically by HTTP client
             assertThat(basicAuthRunner).isNotNull();
@@ -89,8 +90,8 @@ final class TestDuckDbHttpConnectorTest
                 .isEqualTo(2L);
     }
 
-    @Override
-    public void close()
+    @AfterAll
+    public void cleanup()
     {
         if (server != null) {
             try {
@@ -100,6 +101,5 @@ final class TestDuckDbHttpConnectorTest
                 // Ignore
             }
         }
-        super.close();
     }
 }

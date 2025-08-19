@@ -42,7 +42,6 @@ import static io.trino.spi.type.DateType.DATE;
 import static io.trino.spi.type.DecimalType.createDecimalType;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
-
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TimeType.createTimeType;
@@ -62,7 +61,7 @@ public final class DuckDbHttpClient
     private final ObjectMapper objectMapper;
 
     @Inject
-    public DuckDbHttpClient(HttpClient httpClient, DuckDbHttpConfig config)
+    public DuckDbHttpClient(@ForDuckDbHttp HttpClient httpClient, DuckDbHttpConfig config)
     {
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.config = requireNonNull(config, "config is null");

@@ -36,7 +36,7 @@ public final class DuckDbHttpQueryRunner
         return createQueryRunner(ImmutableMap.of());
     }
 
-    public static QueryRunner createQueryRunner(Map<String, String> extraProperties)
+    public static QueryRunner createQueryRunner(Map<String, String> connectorProperties)
             throws Exception
     {
         Session defaultSession = testSessionBuilder()
@@ -45,30 +45,27 @@ public final class DuckDbHttpQueryRunner
                 .build();
 
         QueryRunner queryRunner = DistributedQueryRunner.builder(defaultSession)
-                .setExtraProperties(extraProperties)
                 .build();
 
         queryRunner.installPlugin(new DuckDbHttpPlugin());
 
+        // Use provided connector properties directly
         // Support both authentication methods:
         // 1. Basic auth via URL: http://user:pass@localhost:9999/
         // 2. API key via separate property: api-key
-        Map<String, String> connectorProperties = ImmutableMap.<String, String>builder()
-                .put("http-endpoint", extraProperties.getOrDefault("http-endpoint", "http://localhost:9999/"))
-                .putAll(extraProperties.entrySet().stream()
-                        .filter(entry -> "api-key".equals(entry.getKey()))
-                        .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue)))
-                .buildOrThrow();
-        
-        // If no api-key is provided and URL doesn't contain credentials, add default api-key
-        if (!connectorProperties.containsKey("api-key") && !connectorProperties.get("http-endpoint").contains("@")) {
-            connectorProperties = ImmutableMap.<String, String>builder()
-                    .putAll(connectorProperties)
-                    .put("api-key", "test-key")
-                    .buildOrThrow();
+        Map<String, String> finalConnectorProperties;
+        if (connectorProperties.isEmpty()) {
+            // Default configuration for when no properties are provided
+            finalConnectorProperties = ImmutableMap.of(
+                    "http-endpoint", "http://localhost:9999/",
+                    "api-key", "test-key");
+        }
+        else {
+            // Use the provided properties as-is
+            finalConnectorProperties = ImmutableMap.copyOf(connectorProperties);
         }
 
-        queryRunner.createCatalog("duckdb_http", "duckdb-http", connectorProperties);
+        queryRunner.createCatalog("duckdb_http", "duckdbhttp", finalConnectorProperties);
 
         return queryRunner;
     }

@@ -20,14 +20,14 @@ import java.util.Optional;
 
 /**
  * Configuration for DuckDB HTTP connector.
- * 
+ *
  * Supports two authentication methods:
  * 1. Basic Authentication: Include credentials in URL (http://user:pass@host:port/)
  * 2. API Key Authentication: Use separate 'api-key' property with X-API-Key header
  */
 public class DuckDbHttpConfig
 {
-    private URI httpEndpoint;
+    private URI httpEndpoint = URI.create("http://localhost:9999/");
     private Optional<String> apiKey = Optional.empty();
     private int connectionTimeoutMillis = 30000;
     private int requestTimeoutMillis = 60000;

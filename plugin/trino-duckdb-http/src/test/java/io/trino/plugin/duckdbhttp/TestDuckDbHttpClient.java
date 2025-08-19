@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.google.common.net.MediaType.PLAIN_TEXT_UTF_8;
 import static io.airlift.http.client.HttpStatus.OK;
 import static io.airlift.http.client.testing.TestingResponse.mockResponse;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,7 +93,7 @@ final class TestDuckDbHttpClient
 
     private DuckDbHttpClient createTestClient(String responseBody)
     {
-        HttpClient httpClient = new TestingHttpClient(request -> mockResponse(OK, responseBody));
+        HttpClient httpClient = new TestingHttpClient(request -> mockResponse(OK, PLAIN_TEXT_UTF_8, responseBody));
         DuckDbHttpConfig config = new DuckDbHttpConfig()
                 .setHttpEndpoint(URI.create("http://localhost:9999/"))
                 .setApiKey("test-key");
