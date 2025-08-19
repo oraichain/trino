@@ -31,7 +31,7 @@ public final class DuckDbHttpConnectorFactory
     @Override
     public String getName()
     {
-        return "duckdbhttp";
+        return "duckdb_http";
     }
 
     @Override

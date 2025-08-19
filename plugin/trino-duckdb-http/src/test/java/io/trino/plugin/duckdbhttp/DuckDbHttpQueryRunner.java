@@ -65,7 +65,7 @@ public final class DuckDbHttpQueryRunner
             finalConnectorProperties = ImmutableMap.copyOf(connectorProperties);
         }
 
-        queryRunner.createCatalog("duckdb_http", "duckdbhttp", finalConnectorProperties);
+        queryRunner.createCatalog("duckdb_http", "duckdb_http", finalConnectorProperties);
 
         return queryRunner;
     }
