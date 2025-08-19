@@ -31,6 +31,9 @@ public class DuckDbHttpConfig
     private Optional<String> apiKey = Optional.empty();
     private int connectionTimeoutMillis = 30000;
     private int requestTimeoutMillis = 60000;
+    private boolean includeSchemaInTableName = false;
+    private boolean useSelectStar = true;
+    private boolean limitPushdownEnabled = true;
 
     public URI getHttpEndpoint()
     {
@@ -85,5 +88,41 @@ public class DuckDbHttpConfig
     public boolean hasBasicAuth()
     {
         return httpEndpoint.getUserInfo() != null;
+    }
+
+    public boolean isIncludeSchemaInTableName()
+    {
+        return includeSchemaInTableName;
+    }
+
+    @Config("include-schema-in-table-name")
+    public DuckDbHttpConfig setIncludeSchemaInTableName(boolean includeSchemaInTableName)
+    {
+        this.includeSchemaInTableName = includeSchemaInTableName;
+        return this;
+    }
+
+    public boolean isUseSelectStar()
+    {
+        return useSelectStar;
+    }
+
+    @Config("use-select-star")
+    public DuckDbHttpConfig setUseSelectStar(boolean useSelectStar)
+    {
+        this.useSelectStar = useSelectStar;
+        return this;
+    }
+
+    public boolean isLimitPushdownEnabled()
+    {
+        return limitPushdownEnabled;
+    }
+
+    @Config("limit-pushdown-enabled")
+    public DuckDbHttpConfig setLimitPushdownEnabled(boolean limitPushdownEnabled)
+    {
+        this.limitPushdownEnabled = limitPushdownEnabled;
+        return this;
     }
 }

@@ -32,6 +32,7 @@ public final class DuckDbHttpPageSource
         implements ConnectorPageSource
 {
     private final DuckDbHttpClient client;
+    private final DuckDbHttpConfig config;
     private final ConnectorSession session;
     private final DuckDbHttpSplit split;
     private final DuckDbHttpTableHandle tableHandle;
@@ -43,12 +44,14 @@ public final class DuckDbHttpPageSource
 
     public DuckDbHttpPageSource(
             DuckDbHttpClient client,
+            DuckDbHttpConfig config,
             ConnectorSession session,
             DuckDbHttpSplit split,
             DuckDbHttpTableHandle tableHandle,
             List<DuckDbHttpColumnHandle> columns)
     {
         this.client = requireNonNull(client, "client is null");
+        this.config = requireNonNull(config, "config is null");
         this.session = requireNonNull(session, "session is null");
         this.split = requireNonNull(split, "split is null");
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
@@ -84,16 +87,34 @@ public final class DuckDbHttpPageSource
         if (dataIterator == null) {
             // Build SELECT query
             StringBuilder sqlBuilder = new StringBuilder("SELECT ");
-            for (int i = 0; i < columns.size(); i++) {
-                if (i > 0) {
-                    sqlBuilder.append(", ");
+            
+            if (config.isUseSelectStar()) {
+                sqlBuilder.append("*");
+            } else {
+                for (int i = 0; i < columns.size(); i++) {
+                    if (i > 0) {
+                        sqlBuilder.append(", ");
+                    }
+                    sqlBuilder.append(columns.get(i).getName());
                 }
-                sqlBuilder.append(columns.get(i).getName());
             }
             sqlBuilder.append(" FROM ");
-            sqlBuilder.append(tableHandle.getSchemaTableName().getSchemaName());
-            sqlBuilder.append(".");
-            sqlBuilder.append(tableHandle.getSchemaTableName().getTableName());
+            
+            String schemaName = tableHandle.getSchemaTableName().getSchemaName();
+            String tableName = tableHandle.getSchemaTableName().getTableName();
+            
+            // Include schema prefix based on configuration
+            if (config.isIncludeSchemaInTableName() && schemaName != null && !schemaName.isEmpty()) {
+                sqlBuilder.append(schemaName);
+                sqlBuilder.append(".");
+            }
+            sqlBuilder.append(tableName);
+
+            // Add LIMIT clause if present
+            if (tableHandle.getLimit().isPresent()) {
+                sqlBuilder.append(" LIMIT ");
+                sqlBuilder.append(tableHandle.getLimit().getAsLong());
+            }
 
             List<Map<String, Object>> results = client.executeQuery(sqlBuilder.toString());
             dataIterator = results.iterator();

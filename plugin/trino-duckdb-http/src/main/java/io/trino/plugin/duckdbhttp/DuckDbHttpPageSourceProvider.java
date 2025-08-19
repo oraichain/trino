@@ -31,11 +31,13 @@ public final class DuckDbHttpPageSourceProvider
         implements ConnectorPageSourceProvider
 {
     private final DuckDbHttpClient client;
+    private final DuckDbHttpConfig config;
 
     @Inject
-    public DuckDbHttpPageSourceProvider(DuckDbHttpClient client)
+    public DuckDbHttpPageSourceProvider(DuckDbHttpClient client, DuckDbHttpConfig config)
     {
         this.client = requireNonNull(client, "client is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -54,6 +56,6 @@ public final class DuckDbHttpPageSourceProvider
                 .map(DuckDbHttpColumnHandle.class::cast)
                 .toList();
 
-        return new DuckDbHttpPageSource(client, session, httpSplit, httpTableHandle, httpColumns);
+        return new DuckDbHttpPageSource(client, config, session, httpSplit, httpTableHandle, httpColumns);
     }
 }

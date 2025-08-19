@@ -16,6 +16,8 @@ package io.trino.plugin.duckdbhttp;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
+import com.google.inject.multibindings.Multibinder;
+import io.trino.spi.procedure.Procedure;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
@@ -34,5 +36,9 @@ public final class DuckDbHttpModule
 
         httpClientBinder(binder).bindHttpClient("duckdb-http", ForDuckDbHttp.class);
         configBinder(binder).bindConfig(DuckDbHttpConfig.class);
+        
+        // Bind the procedure for executing raw SQL
+        Multibinder<Procedure> procedureBinder = Multibinder.newSetBinder(binder, Procedure.class);
+        procedureBinder.addBinding().toProvider(DuckDbHttpExecuteProcedure.class).in(Scopes.SINGLETON);
     }
 }

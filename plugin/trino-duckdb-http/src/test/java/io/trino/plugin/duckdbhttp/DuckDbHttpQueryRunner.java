@@ -58,7 +58,10 @@ public final class DuckDbHttpQueryRunner
             // Default configuration for when no properties are provided
             finalConnectorProperties = ImmutableMap.of(
                     "http-endpoint", "http://localhost:9999/",
-                    "api-key", "test-key");
+                    "api-key", "test-key",
+                    "use-select-star", "true",
+                    "limit-pushdown-enabled", "true",
+                    "include-schema-in-table-name", "false");
         }
         else {
             // Use the provided properties as-is
@@ -82,5 +85,9 @@ public final class DuckDbHttpQueryRunner
         log.info("\n== Authentication Examples ==");
         log.info("Basic Auth: http://username:password@localhost:9999/ (handled automatically by HTTP client)");
         log.info("API Key: http://localhost:9999/ with api-key property (uses X-API-Key header)");
+        log.info("\n== Query Optimizations ==");
+        log.info("LIMIT pushdown: SELECT * FROM table LIMIT 10 -> sends 'SELECT * FROM table LIMIT 10' to DuckDB");
+        log.info("Schema handling: SELECT * FROM schema.table -> sends 'SELECT * FROM table' (configurable)");
+        log.info("SELECT * mode: Uses SELECT * instead of listing all columns (configurable)");
     }
 }

@@ -23,12 +23,14 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTableMetadata;
 import io.trino.spi.connector.ConnectorTableVersion;
+import io.trino.spi.connector.LimitApplicationResult;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import static java.util.Objects.requireNonNull;
 
@@ -36,11 +38,13 @@ public final class DuckDbHttpMetadata
         implements ConnectorMetadata
 {
     private final DuckDbHttpClient client;
+    private final DuckDbHttpConfig config;
 
     @Inject
-    public DuckDbHttpMetadata(DuckDbHttpClient client)
+    public DuckDbHttpMetadata(DuckDbHttpClient client, DuckDbHttpConfig config)
     {
         this.client = requireNonNull(client, "client is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -103,5 +107,27 @@ public final class DuckDbHttpMetadata
             return ImmutableList.of(new SchemaTableName(prefix.getSchema().orElse("main"), prefix.getTable().get()));
         }
         return client.getTableNames(session, prefix.getSchema());
+    }
+
+    @Override
+    public Optional<LimitApplicationResult<ConnectorTableHandle>> applyLimit(ConnectorSession session, ConnectorTableHandle table, long limit)
+    {
+        if (!config.isLimitPushdownEnabled()) {
+            return Optional.empty();
+        }
+
+        DuckDbHttpTableHandle handle = (DuckDbHttpTableHandle) table;
+
+        if (handle.getLimit().isPresent() && handle.getLimit().getAsLong() <= limit) {
+            // Already has a smaller or equal limit
+            return Optional.empty();
+        }
+
+        DuckDbHttpTableHandle newHandle = new DuckDbHttpTableHandle(
+                handle.getSchemaTableName(),
+                OptionalLong.of(limit));
+
+        // The limit is guaranteed since we pass it directly to DuckDB
+        return Optional.of(new LimitApplicationResult<>(newHandle, true, false));
     }
 }
