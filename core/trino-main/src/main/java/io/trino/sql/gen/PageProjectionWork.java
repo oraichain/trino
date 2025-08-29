@@ -11,21 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.trino.sql.gen;
 
-package io.trino.plugin.eventlistener.kafka.model;
+import io.trino.spi.block.Block;
 
-import com.google.common.collect.ImmutableMap;
-import io.trino.spi.eventlistener.SplitCompletedEvent;
-
-import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
-
-public record SplitCompletedEventWrapper(SplitCompletedEvent eventPayload, Map<String, String> eventMetadata)
+public interface PageProjectionWork
 {
-    public SplitCompletedEventWrapper
-    {
-        requireNonNull(eventPayload, "eventPayload is null");
-        eventMetadata = ImmutableMap.copyOf(requireNonNull(eventMetadata, "eventMetadata is null"));
-    }
+    Block process();
 }
